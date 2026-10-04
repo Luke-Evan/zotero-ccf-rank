@@ -180,10 +180,18 @@ export async function identifyItem(
             source = "dblp";
             notes.push(`dblp:${hit.venuePath}`);
           } else if (isPreprintPath(hit.venuePath)) {
-            isPreprint = true;
-            preprintFromDblp = true;
-            source = "dblp";
-            notes.push("dblp:preprint");
+            // DBLP indexes the arXiv version of many papers whose venue record
+            // is not there yet (a paper still under review, for instance), so a
+            // CoRR hit only decides the kind when the item names no venue of
+            // its own.
+            if (candidates.namedVenue) {
+              notes.push("dblp:preprint-ignored");
+            } else {
+              isPreprint = true;
+              preprintFromDblp = true;
+              source = "dblp";
+              notes.push("dblp:preprint");
+            }
           } else {
             const fromPath = resolveVenueFromCandidates(
               [hit.venuePath, hit.path],

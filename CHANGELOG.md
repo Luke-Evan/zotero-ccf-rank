@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The venue the user typed into an item now wins over a preprint verdict. Two
+  cases used to be mislabelled as “arXiv 预印本”: a journal paper whose preprint
+  is the only record DBLP knows (a paper still under review, for instance), and
+  a preprint item whose “Publication” field already names its target journal or
+  conference. The DBLP CoRR hit and the preprint item type are now only used
+  when the item names no venue of its own.
+
 ## [1.0.1] - 2026-09-14
 
 ### Fixed

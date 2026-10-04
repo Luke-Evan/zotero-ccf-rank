@@ -195,6 +195,18 @@ describe("candidate collection and resolution", () => {
     equal(preprint.kindHint, "preprint");
   });
 
+  it("prefers the venue the user entered on a preprint item", () => {
+    // A paper under review is often filed as a preprint while its
+    // "Publication" field already names the target journal.
+    const underReview = collectVenueCandidates(
+      item({ repository: "arXiv", publicationTitle: "TKDE" }, "preprint"),
+    );
+    equal(underReview.flags.isPreprint, false);
+    equal(underReview.kindHint, "journal");
+    equal(underReview.namedVenue, "TKDE");
+    equal(resolveVenueFromCandidates(underReview.values)?.abbr, "TKDE");
+  });
+
   it("picks the ranked match out of several candidates", () => {
     const match = resolveVenueFromCandidates([
       "Some Unknown Workshop",

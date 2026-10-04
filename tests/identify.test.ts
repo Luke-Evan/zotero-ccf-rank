@@ -96,6 +96,19 @@ function makeStore(entry?: CasJournalEntry, fresh = true): StoreStub {
   return store;
 }
 
+/** A DBLP client that always returns one hit for the requested title. */
+function makeDblp(venuePath: string, title: string) {
+  const path = `${venuePath.replace(/^\/+/, "")}/record`;
+  return {
+    async lookup() {
+      return {
+        status: "ok" as const,
+        hits: [{ path, venuePath, title, url: path }],
+      };
+    },
+  };
+}
+
 describe("identifyItem: CAS lookup", () => {
   it("uses the cached zone for a journal", async () => {
     const store = makeStore(makeEntry());
@@ -192,6 +205,63 @@ describe("identifyItem: CAS lookup", () => {
     equal(result.record.venueType, "preprint");
     equal(result.record.ccfVenue, "arXiv");
     equal(store.lookups.length, 0);
+  });
+
+  it("keeps the journal rank when DBLP only knows the arXiv version", async () => {
+    // DBLP indexes the preprint of a paper that is still under review at
+    // TKDE, so the CoRR hit must not overwrite a venue the item names itself.
+    const item = makeItem({
+      title:
+        "EAIFD: A Fast and Scalable Algorithm for Incremental Functional Dependency Discovery",
+      publicationTitle: "TKDE",
+      date: "2026-01-18",
+    });
+
+    const result = await identifyItem(item, {
+      dblp: makeDblp("/journals/corr", item.fields.title) as never,
+      options: { ...OPTIONS, dblpEnabled: true },
+    });
+
+    equal(result.record.ccf, "A");
+    equal(result.record.ccfVenue, "TKDE");
+    equal(result.record.venueType, "journal");
+    equal(result.record.source, "metadata");
+    ok(result.notes.includes("dblp:preprint-ignored"));
+  });
+
+  it("falls back to a DBLP preprint hit when the item names no venue", async () => {
+    const item = makeItem(
+      { title: "A Paper Without A Venue Yet" },
+      "manuscript",
+    );
+
+    const result = await identifyItem(item, {
+      dblp: makeDblp("/journals/corr", "A Paper Without A Venue Yet") as never,
+      options: { ...OPTIONS, dblpEnabled: true },
+    });
+
+    equal(result.record.venueType, "preprint");
+    equal(result.record.ccfVenue, "arXiv");
+    ok(result.notes.includes("dblp:preprint"));
+  });
+
+  it("identifies an under-review preprint from the user's publication field", async () => {
+    // Filed as a preprint (repository arXiv) but the publication field names
+    // the target journal: the journal wins over the preprint verdict.
+    const item = makeItem(
+      {
+        title: "A Paper Under Review",
+        repository: "arXiv",
+        publicationTitle: "TKDE",
+      },
+      "preprint",
+    );
+
+    const result = await identifyItem(item, { options: OPTIONS });
+
+    equal(result.record.ccf, "A");
+    equal(result.record.ccfVenue, "TKDE");
+    equal(result.record.venueType, "journal");
   });
 
   it("falls back to the item's journal fields when the venue matched as a journal path", async () => {

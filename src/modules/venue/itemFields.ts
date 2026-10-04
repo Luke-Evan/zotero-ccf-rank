@@ -32,6 +32,12 @@ export interface VenueCandidates {
   /** ISSN / ISBN found on the item. */
   issn: string;
   kindHint: VenueKindHint;
+  /**
+   * The venue the user typed into the item ("Publication", "Conference
+   * Title", ...), ignoring values that only say "this is a preprint".
+   * Empty when the item names no venue of its own.
+   */
+  namedVenue: string;
   /** Type-specific hints. */
   flags: {
     isPreprint: boolean;
@@ -42,6 +48,18 @@ export interface VenueCandidates {
 
 const SHORT_JOURNAL_MARKERS =
   /\b(?:journal|transactions|trans\.?|letters|review|bulletin|magazine|annals|proceedings of the ieee)\b/i;
+
+/** Venue fields the user can fill in, most trusted first. */
+const NAMED_VENUE_FIELDS = [
+  "publicationTitle",
+  "proceedingsTitle",
+  "conferenceName",
+  "journalAbbreviation",
+] as const;
+
+/** Values that only mark a preprint, they do not name a venue. */
+const PREPRINT_MARKERS =
+  /\b(?:arxiv|biorxiv|medrxiv|ssrn|corr|preprint|research\s+square)\b/i;
 
 function readField(item: ItemFieldReader, field: string): string {
   try {
@@ -60,6 +78,22 @@ function firstNonEmpty(...values: string[]): string {
 }
 
 /**
+ * The venue the user entered on the item itself.
+ *
+ * A preprint item can still carry a venue: a paper under review is often filed
+ * as a preprint while its "Publication" field already names the journal. That
+ * explicit entry is a stronger signal than the generic "this also exists on
+ * arXiv" one, so the preprint markers are skipped here.
+ */
+export function namedVenueOf(item: ItemFieldReader): string {
+  return firstNonEmpty(
+    ...NAMED_VENUE_FIELDS.map((field) => readField(item, field)).filter(
+      (value) => value && !PREPRINT_MARKERS.test(value),
+    ),
+  );
+}
+
+/**
  * Collect every field that may hold a venue name for the given item.
  */
 export function collectVenueCandidates(item: ItemFieldReader): VenueCandidates {
@@ -75,13 +109,17 @@ export function collectVenueCandidates(item: ItemFieldReader): VenueCandidates {
   const series = readField(item, "series");
   const issn = readField(item, "ISSN");
 
+  const namedVenue = namedVenueOf(item);
+
+  // The preprint verdict is a fallback: it only stands when the user did not
+  // name a venue. This keeps an under-review paper that is filed as a preprint
+  // (repository "arXiv") but tagged with its target journal out of the
+  // "预印本" bucket.
   const isPreprint =
-    type === "preprint" ||
-    /\barxiv\b|\bbiorxiv\b|\bmedrxiv\b|\bssrn\b|\bpreprint\b/i.test(
-      repository,
-    ) ||
-    /\barxiv\b/i.test(publicationTitle) ||
-    /\bcorr\b/i.test(publicationTitle);
+    !namedVenue &&
+    (type === "preprint" ||
+      PREPRINT_MARKERS.test(repository) ||
+      PREPRINT_MARKERS.test(publicationTitle));
 
   const isConference =
     type === "conferencepaper" ||
@@ -133,6 +171,7 @@ export function collectVenueCandidates(item: ItemFieldReader): VenueCandidates {
         : isJournal
           ? "journal"
           : "other",
+    namedVenue,
     flags: { isPreprint, isConference, isJournal },
   };
 }
